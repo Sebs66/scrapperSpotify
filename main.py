@@ -110,7 +110,7 @@ def get_top_50_info(driver:webdriver.Chrome,country:str,playlist_id:str,token:st
             'playlist_id': playlist_from_API['id'],
             'date': str(datetime.date.today()),
             'totalPlays' : total_plays,
-            'data': top_50 
+            'songs': top_50 
             }
     
     except Exception as err:
@@ -130,54 +130,57 @@ def get_top_50_scrapper_and_API_info(driver:webdriver.Chrome,country:str,playlis
         ]    
     }
     '''
-    driver.get(f'https://open.spotify.com/playlist/{playlist_id}')
     try:
-        elements = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CSS_SELECTOR,'div.contentSpacing')))
-        containers = driver.find_elements(By.CSS_SELECTOR,'div.contentSpacing')
-        while len(containers) < 4:
-            time.sleep(1)
-            print('Waiting')
-            containers = driver.find_elements(By.CSS_SELECTOR,'div.contentSpacing')
-
-        songs = containers[2].find_elements(By.CSS_SELECTOR,'[data-testid="tracklist-row"]')
-        index = 0
-
-        elements = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CSS_SELECTOR,'[data-testid="tracklist-row"]')))
+        songs = []
         while len(songs) < 50:
+            driver.get(f'https://open.spotify.com/playlist/{playlist_id}')
+            tries = 0
             try:
+                elements = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CSS_SELECTOR,'div.contentSpacing')))
+                containers = driver.find_elements(By.CSS_SELECTOR,'div.contentSpacing')
+                while len(containers) < 4:
+                    time.sleep(1)
+                    print('Waiting')
+                    containers = driver.find_elements(By.CSS_SELECTOR,'div.contentSpacing')
+
+                songs = containers[2].find_elements(By.CSS_SELECTOR,'[data-testid="tracklist-row"]')
+                index = 0
+
+                elements = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CSS_SELECTOR,'[data-testid="tracklist-row"]')))
+
                 index += 5
                 songs = containers[2].find_elements(By.CSS_SELECTOR,'[data-testid="tracklist-row"]')
                 driver.execute_script("arguments[0].scrollIntoView(true);",songs[index] )
                 #print(len(songs))
+
             except Exception as err:
-                print('No pudimos encontrar las 50 canciones.')
-                raise Exception('No pudimos encontrar las 50 canciones.')
+                print(f'No pudimos encontrar las 50 canciones. intento numero: {tries}')
+                tries += 1 #/ si sale por los tries guardara la cantidad de canciones que haya encontrado...
 
+            html = driver.page_source
+            soup = BeautifulSoup(html, 'html.parser')
+            main_container = soup.find('div',class_='main-view-container').find('div',class_='GlueDropTarget--tracks')
+            songs_info = main_container.find_all('div',{'data-testid':'tracklist-row'}) #/ From webscrapping.
 
-        html = driver.page_source
-        soup = BeautifulSoup(html, 'html.parser')
-        main_container = soup.find('div',class_='main-view-container').find('div',class_='GlueDropTarget--tracks')
-        songs_info = main_container.find_all('div',{'data-testid':'tracklist-row'}) #/ From webscrapping.
+            playlist_from_API = spotifyAPI.get_playlist(token,playlist_id)
 
-        playlist_from_API = spotifyAPI.get_playlist(token,playlist_id)
+            top_50 = []
+            total_plays = 0
+            for index,song_info_tag in enumerate(songs_info):
+                info_API = playlist_from_API['tracks']['items'][index]['track']
 
-        top_50 = []
-        total_plays = 0
-        for index,song_info_tag in enumerate(songs_info):
-            info_API = playlist_from_API['tracks']['items'][index]['track']
+                song_info = get_song_data_V2(song_info_tag,info_API)
+                total_plays += int(song_info['plays'])
+                top_50.append(song_info)
 
-            song_info = get_song_data_V2(song_info_tag,info_API)
-            total_plays += int(song_info['plays'])
-            top_50.append(song_info)
-
-        return {
-            'name': playlist_from_API['name'],
-            'country': country,
-            'playlist_id': playlist_from_API['id'],
-            'date': str(datetime.date.today()),
-            'totalPlays' : total_plays,
-            'data': top_50 
-            }
+            return {
+                'name': playlist_from_API['name'],
+                'country': country,
+                'playlist_id': playlist_from_API['id'],
+                'date': str(datetime.date.today()),
+                'totalPlays' : total_plays,
+                'data': top_50 
+                }
     
     except Exception as err:
         print('Ha ocurrido una excepción.')
